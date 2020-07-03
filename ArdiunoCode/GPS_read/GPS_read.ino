@@ -80,7 +80,7 @@ void loop()
 
             File dataFile = SD.open("GPSLOG.txt", FILE_WRITE);
 
-            String dataString = String(millis());
+            String dataString = String(millis())+",";
             dataString += String(lat,6)+",";
             dataString += String(lon,6)+", ";
             dataString += String(alt,6)+", ";
