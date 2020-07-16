@@ -18,28 +18,32 @@ const float LPF_COMP = 1-LPF_TUNER; //complement of the above value
 const float SEC2MIL = .001; // conversion factor from seconds to milliseconds
 const float RAD2DEG = 180/M_PI; // conversion factor from radians to degrees
 const float DEG2RAD = M_PI/180;
+const float DECLINATION = 0 * DEG2RAD;  // magnetic declination in radians
 
-float roll,pitch = 0;
+float magErrx, magErry, magErrz; // magnetometer calibration errrors;
+float max_x,min_x,max_y,min_y,max_z,min_z = 0;  // magnetometer calibration boundaries
+
+float roll,pitch,heading = 0;
 
 void setup() {
   if(DEBUG){
     Serial.begin(9600);
     while (!Serial);
-    Serial.println("Started");
+    Serial.println(F("Started"));
   }
 
   if (!IMU.begin()) {
-    if(DEBUG)Serial.println("Failed to initialize IMU!");
+    if(DEBUG)Serial.println(F("Failed to initialize IMU!"));
     while (1);
   }
 
   if(DEBUG){
-    Serial.println("Roll\tPitch\tProfile");
+    Serial.println(F("Roll\tPitch"));
   }
 }
 
 // sensor fusion function
-void getFPA(float &p, float &r){
+void getAttitude(float &p, float &r){
   float aX, aY, aZ, gX, gY, gZ, accelRoll, accelPitch, gyroRoll, gyroPitch;
   if (IMU.gyroscopeAvailable() && IMU.accelerationAvailable()) {
     IMU.readGyroscope(gX, gY, gZ);
@@ -58,24 +62,54 @@ void getFPA(float &p, float &r){
     r = LPF_TUNER * gyroRoll + LPF_COMP * accelRoll;
     p = LPF_TUNER * gyroPitch + LPF_COMP * accelPitch;
   }
-  
-  if(DEBUG){
-    Serial.print(r*RAD2DEG);
-    Serial.print("\t");
-    Serial.print(p*RAD2DEG);
-    Serial.print("\t");
+}
+
+// check magnetometer calibration
+void checkCalibration(float x, float y, float z){
+  // recalculate boundary values
+  if(x > max_x) max_x = x;
+  if(x < min_x) min_x = x;
+  if(y > max_y) max_y = y;
+  if(y < min_y) min_y = y;
+  if(z > max_z) max_z = z;
+  if(z < min_z) min_z = z;
+
+  //establish offsets
+  magErrx = (max_x + min_x) * 0.5;
+  magErry = (max_y + min_y) * 0.5;
+  magErrz = (max_z + min_z) * 0.5;
+}
+
+// get the magnetic heading from the magnetometer
+void getHeading(float &h){
+  float x, y, z;
+  if (IMU.magneticFieldAvailable()) {
+    IMU.readMagneticField(x, y, z);
+    checkCalibration(x,y,z);
+    h = atan2(-(y-magErry), -(x-magErrx));
+    if(h<0) h+= 2*M_PI;
+    h += DECLINATION;
   }
-  
 }
 
 // Main Loop
 void loop() {
   int startTime = millis();
 
-  getFPA(pitch, roll);
+  // read attitude and heading
+  getAttitude(pitch, roll);
+  getHeading(heading);
+
+  // display attitude and heading
+   if(DEBUG){
+      Serial.print(pitch*RAD2DEG);
+      Serial.print(F(",\t"));
+      Serial.print(roll*RAD2DEG);
+      Serial.print(F(",\t"));
+      Serial.println(heading*RAD2DEG);
+   }
   
   int endTime = millis();
-  if(DEBUG)Serial.println(endTime-startTime);
   while(endTime - startTime < TIMESTEP){
     endTime = millis();
   }
